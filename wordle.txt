@@ -33,6 +33,7 @@ afoul
 after
 again
 agape
+agast
 agate
 agent
 agile
