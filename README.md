@@ -1,6 +1,6 @@
 # Improving my code, one game at a time...&emsp; .𖡼⚘𖥧𖤣᪥𖡼.𖤣𖥧.
 
-I've heard that building games is one of the best ways to sharpen you programming skills; every game, even a simple ones, requires you to think through logic, manage state, handle user input, and debug unexpected behavior.
+I've heard that building games is one of the best ways to sharpen your programming skills; every game, even a simple ones, requires you to think through logic, manage state, handle user input, and debug unexpected behavior.
 Follow along on my journey as I code my way through classic games!
 
 ### Completed Games:
