@@ -1,4 +1,4 @@
-# Improving my code, one game at a time...&emsp; &emsp; &emsp; &emsp; &emsp; &emsp; .𖡼⚘𖥧𖤣᪥𖡼.𖤣𖥧.
+# Improving my code, one game at a time...&emsp; &emsp; &emsp; &emsp; &emsp; .𖡼⚘𖥧𖤣᪥𖡼.𖤣𖥧.
 
 Building games is one of the best ways to sharpen my programming skills.
 Every game, even a simple ones, requires me to think through logic, manage state, handle user input, and debug unexpected behavior.
