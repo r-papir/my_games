@@ -22,12 +22,12 @@ class WordleGame:
         print(" ")
         print("INSTRUCTIONS:")
         print(" ")
-        print("Players are given 6 tries to guess a valid 5-letter word.")
+        print("Players are given 6 tries to guess a valid 5-letter word (excluding plural nouns).")
         print("The color of a tile will change to show you how close your guess was.")
         print("If the tile turns green, the letter is in the word AND it is in the correct spot.")
         print("If the tile turns yellow, the letter is in the word, but it is NOT in the correct spot.")
         print("If the tile turns gray, the letter is NOT in the word at all.")
-        print("Would you like to proceed? (Yes/No)")
+        print("Would you like to play? (Yes/No)")
         
         if input().lower() == "yes":
             self.play()
