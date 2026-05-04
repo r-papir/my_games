@@ -34,7 +34,7 @@ import pygame
 
 WIDTH, HEIGHT = 640, 480
 
-// SECTION #? DATA SAVING & TIMEZONE
+# SECTION #? DATA SAVING & TIMEZONE
 
 SAVE_PATH    = Path.home() / ".temporal_plant_save.json"
 TZ_EST       = ZoneInfo("America/New_York")
@@ -49,7 +49,7 @@ BLUE   = (100, 160, 210)
 WHITE  = (240, 240, 240)
 
 
-// SECTION #? BONSAI GENERATOR
+# SECTION #? BONSAI GENERATOR
 # Draws onto a (BONSAI_W × BONSAI_H) grid of (char, color) cells, then
 # renders that grid to a cached Pygame Surface via get_bonsai_surf().
 
