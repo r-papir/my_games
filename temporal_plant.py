@@ -16,8 +16,6 @@ Controls:
   W           — Water the plant
   S           — Expose to sunlight (open blinds / move to window)
   D           — Toggle debug overlay (reveals all hidden state)
-  R           — Return to plant selection
-  LEFT/RIGHT  — Navigate plant selection
   ENTER       — Confirm selection
 
 Run locally:   python temporal_plant.py
@@ -34,18 +32,13 @@ from zoneinfo import ZoneInfo
 import pygame
 
 
-
-# ── Display ────────────────────────────────────────────────────────────────────
-
 WIDTH, HEIGHT = 640, 480
 
-# ── Persistence & timezone ────────────────────────────────────────────────────
+// SECTION #? DATA SAVING & TIMEZONE
 
 SAVE_PATH    = Path.home() / ".temporal_plant_save.json"
-TZ_EST       = ZoneInfo("America/New_York")   # handles EST/EDT automatically
-SAVE_INTERVAL = 30   # seconds between auto-saves
-
-# ── Colour palette ─────────────────────────────────────────────────────────────
+TZ_EST       = ZoneInfo("America/New_York")
+SAVE_INTERVAL = 30   # 30 seconds between auto-saves
 
 BG     = ( 15,  20,  10)
 FG     = (180, 220, 140)
@@ -55,7 +48,8 @@ RED    = (210,  60,  60)
 BLUE   = (100, 160, 210)
 WHITE  = (240, 240, 240)
 
-# ── Procedural bonsai generator ───────────────────────────────────────────────
+
+// SECTION #? BONSAI GENERATOR
 # Draws onto a (BONSAI_W × BONSAI_H) grid of (char, color) cells, then
 # renders that grid to a cached Pygame Surface via get_bonsai_surf().
 
@@ -231,7 +225,6 @@ PLANT_PARAMS = {
     },
 }
 
-# ── Game state ─────────────────────────────────────────────────────────────────
 
 class PlantState:
     def __init__(self, name: str):
