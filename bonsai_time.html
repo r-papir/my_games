@@ -1,0 +1,416 @@
+
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f140a; color: #b4dc8c; font-family: monospace; }
+  #app { width: 640px; margin: 0 auto; padding: 1rem; }
+  canvas { display: block; border: 1px solid #3c5a28; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  button { font-family: monospace; font-size: 13px; background: transparent;
+    border: 1px solid #3c5a28; color: #b4dc8c; padding: 6px 14px;
+    cursor: pointer; border-radius: 4px; }
+  button:hover { background: #1a2e10; }
+  #debug-panel { font-size: 12px; background: rgba(0,0,0,0.8);
+    border: 1px solid #3c5a28; padding: 8px 12px; margin-top: 8px;
+    display: none; line-height: 1.8; }
+  #debug-panel.visible { display: block; }
+  .hint-row { display: flex; gap: 2rem; margin: 6px 0; font-size: 13px; }
+  .bar-wrap { margin: 8px 0; }
+  .bar-track { width: 220px; height: 10px; background: #3c5a28;
+    border: 1px solid #b4dc8c; display: inline-block; vertical-align: middle; }
+  .bar-fill { height: 100%; background: #dcdc50; transition: width 0.3s; }
+  .controls { margin-top: 8px; font-size: 12px; color: #467032; }
+  #clock { text-align: right; font-size: 12px; color: #467032; }
+  #stage-label { text-align: center; font-size: 14px; margin: 4px 0; }
+  #title-screen { text-align: center; padding: 2rem 0; }
+  #title-screen h1 { color: #dcdc50; font-size: 20px; margin-bottom: 1rem; }
+  #title-screen p { font-size: 13px; color: #467032; margin-top: 1.5rem; }
+</style>
+
+<div id="app">
+
+  <!-- TITLE SCREEN -->
+  <div id="title-screen" class="screen active">
+    <h1>TEMPORAL BONSAI</h1>
+    <canvas id="title-canvas" width="640" height="200"></canvas>
+    <div style="margin-top:1rem;">
+      <button id="btn-continue" style="display:none; margin-right:1rem;">[C] Continue</button>
+      <button id="btn-new">[N] New bonsai</button>
+    </div>
+    <p>Growth needs BOTH water + light in range — timing matters, not just quantity.</p>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen">
+    <div id="clock"></div>
+    <h1 style="text-align:center; color:#dcdc50; font-size:20px;">TEMPORAL BONSAI</h1>
+    <div id="stage-label"></div>
+
+    <!-- Bonsai art canvas -->
+    <canvas id="bonsai-canvas" width="640" height="200"></canvas>
+
+    <!-- Resource hints -->
+    <div class="hint-row">
+      <span id="water-hint">Water: —</span>
+      <span id="light-hint">Light: —</span>
+    </div>
+
+    <!-- Growth progress bar -->
+    <div class="bar-wrap">
+      <span style="font-size:12px; color:#467032;">Growth progress&nbsp;</span>
+      <span class="bar-track"><span class="bar-fill" id="progress-fill" style="width:0%"></span></span>
+    </div>
+
+    <!-- Debug panel (hidden by default) -->
+    <div id="debug-panel">
+      <span style="color:#dcdc50;">[ DEBUG — HIDDEN STATE ]</span>
+      <div id="debug-lines"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls" style="margin-top:6px;">
+      <button onclick="handleKey('w')">[W] Water</button>
+      <button onclick="handleKey('s')" style="margin-left:6px;">[S] Sunlight</button>
+      <button onclick="handleKey('d')" style="margin-left:6px;">[D] Debug</button>
+      <button onclick="handleKey('r')" style="margin-left:6px;">[R] Restart</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+// SECTION: DATA / CONSTANTS
+// ─────────────────────────────────────────────────────────────────
+const PLANT_PARAMS = {
+  Bonsai: {
+    decay_rate:       0.8,
+    water_amount:     20,
+    optimal_range:    [30, 65],
+    overwater_thresh: 76,
+    sun_decay_rate:   1.0,
+    sun_amount:       22,
+    sun_optimal:      [35, 70],
+    overlight_thresh: 82,
+    growth_time:      50,
+    damage_rate:      1.5,
+    lethal_damage:    120,
+  }
+};
+
+const STAGE_NAMES = ["Seedling","Sprout","Sapling","Mature","Blooming"];
+const SAVE_KEY    = "temporal_bonsai_save";
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: PLANT STATE
+// ─────────────────────────────────────────────────────────────────
+function newPlant(name = "Bonsai") {
+  const p = PLANT_PARAMS[name];
+  return {
+    name, params: p,
+    seed: Math.floor(Math.random() * 1e6),
+    moisture: 50, sunlight: 50,
+    stage: 0, time_in_optimal: 0,
+    damage: 0, dead: false, won: false,
+    lastTick: performance.now(),
+  };
+}
+
+function tickPlant(plant) {
+  if (plant.dead || plant.won) return;
+  const now = performance.now();
+  const dt  = (now - plant.lastTick) / 1000;
+  plant.lastTick = now;
+  const p = plant.params;
+  plant.moisture = Math.max(0, plant.moisture - p.decay_rate     * dt);
+  plant.sunlight = Math.max(0, plant.sunlight - p.sun_decay_rate * dt);
+  const [mlo,mhi] = p.optimal_range;
+  const [slo,shi] = p.sun_optimal;
+  const mOk = plant.moisture >= mlo && plant.moisture <= mhi;
+  const sOk = plant.sunlight >= slo && plant.sunlight <= shi;
+  if (mOk && sOk) plant.time_in_optimal += dt;
+  if (plant.moisture > p.overwater_thresh || plant.moisture < mlo * 0.35)
+    plant.damage += p.damage_rate * dt;
+  if (plant.sunlight > p.overlight_thresh || plant.sunlight < slo * 0.35)
+    plant.damage += p.damage_rate * dt;
+  const threshold = p.growth_time * (plant.stage + 1);
+  if (plant.stage < 4 && plant.time_in_optimal >= threshold) {
+    plant.stage++;
+    if (plant.stage === 4) plant.won = true;
+  }
+  if (plant.damage >= p.lethal_damage) plant.dead = true;
+}
+
+function waterPlant(plant)  { if (!plant.dead && !plant.won) plant.moisture = Math.min(100, plant.moisture + plant.params.water_amount); }
+function exposeSun(plant)   { if (!plant.dead && !plant.won) plant.sunlight = Math.min(100, plant.sunlight + plant.params.sun_amount); }
+
+function stageProgress(plant) {
+  if (plant.won) return 1;
+  const p  = plant.params;
+  const lo = p.growth_time * plant.stage;
+  return Math.max(0, Math.min(1, (plant.time_in_optimal - lo) / p.growth_time));
+}
+
+function moistureHint(plant) {
+  const p = plant.params; const [lo,hi] = p.optimal_range;
+  if (plant.dead) return ["Dead","#d23c3c"];
+  if (plant.moisture > p.overwater_thresh) return ["Overwatered","#d23c3c"];
+  if (plant.moisture < lo*0.35)            return ["Parched","#d23c3c"];
+  if (plant.moisture >= lo && plant.moisture <= hi) return ["Hydrated","#b4dc8c"];
+  if (plant.moisture < lo)                 return ["Thirsty","#dcdc50"];
+  return ["Moist","#64a0d2"];
+}
+
+function sunHint(plant) {
+  const p = plant.params; const [slo,shi] = p.sun_optimal;
+  if (plant.dead) return ["Dead","#d23c3c"];
+  if (plant.sunlight > p.overlight_thresh) return ["Scorched","#d23c3c"];
+  if (plant.sunlight < slo*0.35)           return ["In the dark","#d23c3c"];
+  if (plant.sunlight >= slo && plant.sunlight <= shi) return ["Well-lit","#dcdc50"];
+  if (plant.sunlight < slo)                return ["Needs light","#467032"];
+  return ["Bright","#64a0d2"];
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: PERSISTENCE
+// ─────────────────────────────────────────────────────────────────
+function savePlant(plant) {
+  try {
+    const d = Object.assign({}, plant, { saved_utc: new Date().toISOString() });
+    delete d.lastTick;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(d));
+  } catch(e) {}
+}
+
+function loadPlant() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    const plant = Object.assign(newPlant(d.name), d);
+    plant.lastTick = performance.now();
+    const elapsed = (Date.now() - new Date(d.saved_utc).getTime()) / 1000;
+    if (elapsed > 0 && !plant.dead && !plant.won) applyOffline(plant, elapsed);
+    return plant;
+  } catch(e) { return null; }
+}
+
+function applyOffline(plant, elapsed) {
+  const p = plant.params;
+  const [mlo] = p.optimal_range, [slo] = p.sun_optimal;
+  const crit_m = mlo * 0.35, crit_s = slo * 0.35;
+  const dry_time  = plant.moisture > crit_m ? Math.max(0, elapsed - (plant.moisture-crit_m)/p.decay_rate)     : elapsed;
+  const dark_time = plant.sunlight > crit_s ? Math.max(0, elapsed - (plant.sunlight-crit_s)/p.sun_decay_rate) : elapsed;
+  plant.moisture = Math.max(0, plant.moisture - p.decay_rate     * elapsed);
+  plant.sunlight = Math.max(0, plant.sunlight - p.sun_decay_rate * elapsed);
+  plant.damage += p.damage_rate * dry_time + p.damage_rate * dark_time;
+  if (plant.damage >= p.lethal_damage) plant.dead = true;
+}
+
+function deleteSave() { try { localStorage.removeItem(SAVE_KEY); } catch(e) {} }
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: BONSAI RENDERER (canvas)
+// ─────────────────────────────────────────────────────────────────
+const BONSAI_W = 46, BONSAI_H = 18;
+const COL = { wood:"#916432", leaf:"#4ba541", bloom:"#e696c8", pot:"#a0693a", bg:"#0f140a" };
+
+function makeBonsai(stage, seed) {
+  const chars = Array.from({length:BONSAI_H}, () => Array(BONSAI_W).fill(' '));
+  const cols  = Array.from({length:BONSAI_H}, () => Array(BONSAI_W).fill(COL.bg));
+  const rng   = seededRng(seed);
+
+  function put(x, y, ch, col, force=false) {
+    if (x>=0 && x<BONSAI_W && y>=0 && y<BONSAI_H)
+      if (force || chars[y][x]===' ') { chars[y][x]=ch; cols[y][x]=col; }
+  }
+  function brChar(dx,dy) { if(dx===0) return '|'; if(dy===0) return '-'; return dx*dy<0?'/':'\\'; }
+
+  function leaves(x, y, blooming) {
+    const pool = blooming ? ['@','*'] : ['~','~','.'];
+    const col  = blooming ? COL.bloom : COL.leaf;
+    [[0,0],[1,0],[-1,0],[0,-1],[1,-1],[-1,-1],[2,-1],[-2,-1],[0,-2],[1,-2],[-1,-2]]
+      .forEach(([ox,oy]) => { if(rng()<0.72) put(x+ox,y+oy,pool[Math.floor(rng()*pool.length)],col); });
+  }
+
+  function branch(x, y, dx, dy, steps, depth, blooming) {
+    for (let i=0; i<steps; i++) {
+      const nx=x+dx, ny=y+dy;
+      if (nx<0||nx>=BONSAI_W||ny<0||ny>=BONSAI_H) break;
+      put(nx,ny,brChar(dx,dy),COL.wood);
+      x=nx; y=ny;
+      if (i<steps-1 && rng()<0.28) { const ex=x+dx; if(ex>=0&&ex<BONSAI_W){put(ex,y,'-',COL.wood); x=ex;} }
+    }
+    if (depth<=0) { leaves(x,y,blooming); }
+    else {
+      const sub=Math.max(1,steps-1);
+      branch(x,y,-1,-1,sub,depth-1,blooming);
+      branch(x,y, 1,-1,sub,depth-1,blooming);
+      if (depth>=2 && rng()<0.55) branch(x,y,0,-1,Math.max(1,sub-1),depth-2,blooming);
+    }
+  }
+
+  const cx=Math.floor(BONSAI_W/2), pot_y=BONSAI_H-4, base_y=pot_y-1;
+  const configs = [
+    [0,0,0,false],[2,0,2,false],[4,1,3,false],[6,2,4,false],[8,3,5,true]
+  ];
+  const [trunk_h,br_depth,br_steps,blooming] = configs[stage];
+
+  for (let j=0;j<trunk_h;j++) {
+    const y=base_y-j;
+    if(j===0){put(cx-1,y,'|',COL.wood,true);put(cx,y,'|',COL.wood,true);put(cx+1,y,'|',COL.wood,true);}
+    else {put(cx-1,y,'(',COL.wood,true);put(cx,y,'|',COL.wood,true);put(cx+1,y,')',COL.wood,true);}
+  }
+
+  const tip_y = base_y-trunk_h+1;
+  if(stage===0){put(cx,base_y,',',COL.leaf,true);put(cx,base_y-1,'.',COL.leaf,true);}
+  else if(stage===1){[[-1,0],[0,-1],[1,0]].forEach(([ox,oy])=>put(cx+ox,tip_y+oy,'~',COL.leaf,true));}
+  else {
+    branch(cx,tip_y,-1,-1,br_steps,br_depth,blooming);
+    branch(cx,tip_y, 1,-1,br_steps,br_depth,blooming);
+    if(br_depth>=2&&rng()<0.6) branch(cx,tip_y,0,-1,br_steps-1,br_depth-1,blooming);
+  }
+
+  const ph=7;
+  for(let ox=-ph-1;ox<=ph+1;ox++) put(cx+ox,pot_y,'_',COL.pot,true);
+  put(cx-ph-1,pot_y+1,'|',COL.pot,true); put(cx+ph+1,pot_y+1,'|',COL.pot,true);
+  for(let ox=-ph;ox<=ph;ox++) put(cx+ox,pot_y+1,'_',COL.pot,true);
+  put(cx-ph,pot_y+2,'\\',COL.pot,true); put(cx+ph,pot_y+2,'/',COL.pot,true);
+  for(let ox=-ph+1;ox<ph;ox++) put(cx+ox,pot_y+2,'_',COL.pot,true);
+
+  return {chars,cols};
+}
+
+const bonsaiCache = {};
+function drawBonsai(canvas, stage, seed) {
+  const key = `${stage}_${seed}`;
+  if (!bonsaiCache[key]) bonsaiCache[key] = makeBonsai(stage, seed);
+  const {chars,cols} = bonsaiCache[key];
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font = '14px monospace';
+  const cw=8, ch=14;
+  canvas.width = BONSAI_W*cw; canvas.height = BONSAI_H*ch;
+  ctx.fillStyle=COL.bg; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font='14px monospace';
+  for(let y=0;y<BONSAI_H;y++)
+    for(let x=0;x<BONSAI_W;x++)
+      if(chars[y][x]!==' '){ctx.fillStyle=cols[y][x]; ctx.fillText(chars[y][x],x*cw,y*ch+ch-2);}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: SEEDED RNG (LCG, replaces Python's random.Random(seed))
+// ─────────────────────────────────────────────────────────────────
+function seededRng(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: CLOCK
+// ─────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const h = now.getHours()%12||12, m = String(now.getMinutes()).padStart(2,'0');
+  const ampm = now.getHours()<12?'AM':'PM';
+  document.getElementById('clock').textContent = `${h}:${m} ${ampm}`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: UI / SCREENS
+// ─────────────────────────────────────────────────────────────────
+let plant = null, debug = false, savedPlant = null, gameLoop = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function startTitle() {
+  if (gameLoop) { clearInterval(gameLoop); gameLoop=null; }
+  savedPlant = loadPlant();
+  const btnC = document.getElementById('btn-continue');
+  btnC.style.display = savedPlant && !savedPlant.dead && !savedPlant.won ? 'inline-block' : 'none';
+  drawBonsai(document.getElementById('title-canvas'), 4, 77777);
+  showScreen('title-screen');
+}
+
+function startGame(p) {
+  plant = p; debug = false;
+  plant.lastTick = performance.now();
+  showScreen('game-screen');
+  if (gameLoop) clearInterval(gameLoop);
+  gameLoop = setInterval(gameFrame, 33);
+}
+
+function gameFrame() {
+  tickPlant(plant);
+  updateClock();
+  renderGame();
+  if (performance.now() - (plant._lastSave||0) > 30000) {
+    savePlant(plant); plant._lastSave = performance.now();
+  }
+}
+
+function renderGame() {
+  drawBonsai(document.getElementById('bonsai-canvas'), plant.stage, plant.seed);
+  const [ml,mc] = moistureHint(plant), [sl,sc] = sunHint(plant);
+  const wh = document.getElementById('water-hint');
+  const lh = document.getElementById('light-hint');
+  wh.textContent = `Water: ${ml}`; wh.style.color = mc;
+  lh.textContent = `Light: ${sl}`; lh.style.color = sc;
+  document.getElementById('progress-fill').style.width = (stageProgress(plant)*100).toFixed(1)+'%';
+  const sl2 = document.getElementById('stage-label');
+  if (plant.dead) { sl2.textContent='*** DEAD ***'; sl2.style.color='#d23c3c'; }
+  else if (plant.won) { sl2.textContent='BLOOMING — your bonsai is complete!'; sl2.style.color='#dcdc50'; }
+  else { sl2.textContent=STAGE_NAMES[plant.stage]; sl2.style.color='#b4dc8c'; }
+
+  const dp = document.getElementById('debug-panel');
+  dp.classList.toggle('visible', debug);
+  if (debug) {
+    const p2=plant.params, [mlo,mhi]=p2.optimal_range, [slo,shi]=p2.sun_optimal;
+    document.getElementById('debug-lines').innerHTML = `
+      <div>Moisture       : ${plant.moisture.toFixed(1)}  (opt ${mlo}–${mhi}, over>${p2.overwater_thresh})</div>
+      <div>Sunlight       : ${plant.sunlight.toFixed(1)}  (opt ${slo}–${shi}, over>${p2.overlight_thresh})</div>
+      <div>Time in opt    : ${plant.time_in_optimal.toFixed(1)} s</div>
+      <div>Stage threshold: ${(p2.growth_time*(plant.stage+1)).toFixed(1)} s</div>
+      <div>Damage         : ${plant.damage.toFixed(1)} / ${p2.lethal_damage}</div>
+    `;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: INPUT HANDLING
+// ─────────────────────────────────────────────────────────────────
+function handleKey(k) {
+  if (k==='w') waterPlant(plant);
+  else if (k==='s') exposeSun(plant);
+  else if (k==='d') debug = !debug;
+  else if (k==='r') { savePlant(plant); startTitle(); }
+}
+
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (document.getElementById('game-screen').classList.contains('active')) {
+    if (['w','s','d','r'].includes(k)) handleKey(k);
+  } else {
+    if (k==='c' && savedPlant && !savedPlant.dead && !savedPlant.won) startGame(savedPlant);
+    else if (k==='n' || k==='enter') { deleteSave(); startGame(newPlant('Bonsai')); }
+  }
+});
+
+document.getElementById('btn-new').onclick = () => { deleteSave(); startGame(newPlant('Bonsai')); };
+document.getElementById('btn-continue').onclick = () => {
+  if (savedPlant && !savedPlant.dead && !savedPlant.won) startGame(savedPlant);
+};
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION: INIT
+// ─────────────────────────────────────────────────────────────────
+startTitle();
+</script>
