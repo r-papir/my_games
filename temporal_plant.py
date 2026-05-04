@@ -685,4 +685,5 @@ async def main():
         await asyncio.sleep(0)   # yield to browser event loop (required by Pygbag)
 
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())
